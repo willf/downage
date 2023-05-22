@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -20,29 +19,14 @@ const (
 )
 
 type PingResult struct {
-	Id         int           `json:"id"`
-	StartTime  time.Time     `json:"start_time"`
-	Duration   time.Duration `json:"duration"`
-	Continuing bool          `json:"continuing"`
+	StartTime  time.Time `json:"start_time"`
+	Duration   int64     `json:"duration"`
+	Continuing bool      `json:"continuing"`
 }
 
-func initializeDatabase(dbPath string) (db *sql.DB, err error) {
-	// Open the database
-	db, err = sql.Open("sqlite3", dbPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Create the table if it doesn't exist
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS ping (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        startTime DATETIME,
-        duration INTEGER,
-        continuing INTEGER
-    )`)
-	if err != nil {
-		log.Fatal(err)
-	}
+func (p PingResult) Dump() (err error) {
+	// dump to Stdout as JSON
+	err = json.NewEncoder(os.Stdout).Encode(p)
 	return
 }
 
@@ -54,15 +38,15 @@ func randomizeList(list []string) []string {
 }
 
 func serverAvailable(server string) bool {
-	fmt.Println("Pinging ", server)
+	log.Println("Pinging ", server)
 	Command := fmt.Sprint("ping -c 1 ", server, "> /dev/null && echo true || echo false")
 	output, err := exec.Command("/bin/sh", "-c", Command).Output()
 	result := strings.TrimSpace(string(output))
 	if err != nil {
-		fmt.Println("Error pinging server: ", err)
+		log.Println("Error pinging server: ", err)
 		//log.Fatal(err)
 	}
-	return false
+	//return false
 	return result == "true"
 }
 
@@ -76,69 +60,14 @@ func someServerAvailable(servers []string) bool {
 	return false
 }
 
-func updateContinuingRecord(db sql.DB, duration time.Duration) {
-	// Get the last record
-	//var lastRecord PingResult
-	var id int
-	var startTime time.Time
-	var old_duration int
-	var continuing bool
-	err := db.QueryRow(`SELECT id, startTime, duration, continuing FROM ping ORDER BY startTime DESC LIMIT 1`).Scan(&id, &startTime, &old_duration, &continuing)
-	if err != nil && err != sql.ErrNoRows {
-		fmt.Println("Error getting last record: ", err)
-		log.Fatal(err)
-	}
-
-	fmt.Println("Last record: ", id, startTime, old_duration, continuing)
-	fmt.Println("Database: ", db)
-	// Update the last record
-	fmt.Println("Updating last record, id: ", id, " with duration: ", duration.Milliseconds())
-	_, err = db.Exec(`UPDATE ping SET duration = ? WHERE id = ?`, duration.Milliseconds(), id)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func dumpAllRecordsAsJson(db sql.DB) {
-	// Get all the records
-	rows, err := db.Query(`SELECT * FROM ping`)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer rows.Close()
-
-	// Iterate over the records
-	for rows.Next() {
-		var record PingResult
-		err = rows.Scan(&record.Id, &record.StartTime, &record.Duration, &record.Continuing)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// dump the record as JSON to Stdout
-		json.NewEncoder(os.Stdout).Encode(record)
-	}
-}
-
 func main() {
-	dbPath := flag.String("db", "./ping.db", "path to the SQLite database file")
+	log.SetOutput(os.Stderr)
+	//dbPath := flag.String("db", "./ping.db", "path to the SQLite database file")
 	serverList := flag.String("servers", "8.8.8.8,1.1.1.1", "comma-separated list of ping servers")
-	pollInterval := flag.Duration("poll", time.Second, "polling interval")
-	dump := flag.Bool("dump", false, "dump the database and exit")
+	pollInterval := flag.Duration("poll", time.Second*30, "polling interval")
+	//dump := flag.Bool("dump", false, "dump the database and exit")
 
 	flag.Parse()
-
-	// Initialize the database
-	db, err := initializeDatabase(*dbPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
-	// Dump the database and exit
-	if *dump {
-		dumpAllRecordsAsJson(*db)
-		return
-	}
 
 	// convert the server list to an array
 	servers := strings.Split(*serverList, ",")
@@ -151,8 +80,6 @@ func main() {
 
 	// Ping loop
 	for {
-
-		currentTime := time.Now()
 		internetIsUp := someServerAvailable(servers)
 
 		// There are four cases:
@@ -163,31 +90,42 @@ func main() {
 
 		// Case 1: The internet is up and we're continuing
 		if internetIsUp && continuing {
-			fmt.Println("Case 1: The internet is up and we're continuing")
-			// Update the last record
-			updateContinuingRecord(*db, currentTime.Sub(startTime))
+			log.Println("The internet is back up")
+
 			continuing = false
+			pingResult := PingResult{
+				StartTime:  startTime.UTC(),
+				Duration:   time.Since(startTime).Milliseconds(),
+				Continuing: continuing,
+			}
+			pingResult.Dump()
+
 		} else if internetIsUp && !continuing {
-			fmt.Println("Case 2: The internet is up and we're not continuing")
+			log.Println("Case 2: The internet is still up.")
 			// Case 2: The internet is up and we're not continuing
 			// Do nothing
 		} else if !internetIsUp && continuing {
-			fmt.Println("Case 3: The internet is down and we're continuing")
+			log.Println("Case 3: The internet is still down.")
 			// Case 3: The internet is down and we're continuing
-			// Update the last record
-			updateContinuingRecord(*db, currentTime.Sub(startTime))
+			pingResult := PingResult{
+				StartTime:  startTime.UTC(),
+				Duration:   time.Since(startTime).Milliseconds(),
+				Continuing: continuing,
+			}
+			pingResult.Dump()
 		} else {
 			// Case 4: The internet is down and we're not continuing
-			fmt.Println("Case 4: The internet is down and we're not continuing")
+			log.Println("Case 4: The internet has gone down.")
+			startTime = time.Now()
 			continuing = true
-			// Insert a new record
-			_, err = db.Exec(`INSERT INTO ping (startTime, duration, continuing)
-								VALUES (?, ?, ?)`, startTime.UTC(), 0, continuing)
-			if err != nil {
-				log.Fatal(err)
+			pingResult := PingResult{
+				StartTime:  startTime.UTC(),
+				Duration:   0,
+				Continuing: continuing,
 			}
+			pingResult.Dump()
 		}
-		// Wait for a minute or until the next ping
+		// Wait interval
 		time.Sleep(*pollInterval)
 	}
 
