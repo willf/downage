@@ -62,6 +62,7 @@ func serverAvailable(server string) bool {
 		fmt.Println("Error pinging server: ", err)
 		//log.Fatal(err)
 	}
+	return false
 	return result == "true"
 }
 
@@ -88,8 +89,11 @@ func updateContinuingRecord(db sql.DB, duration time.Duration) {
 		log.Fatal(err)
 	}
 
+	fmt.Println("Last record: ", id, startTime, old_duration, continuing)
+	fmt.Println("Database: ", db)
 	// Update the last record
-	_, err = db.Exec(`UPDATE ping SET duration = ?, continuing = ? WHERE id = ?`, duration.Milliseconds(), true, id)
+	fmt.Println("Updating last record, id: ", id, " with duration: ", duration.Milliseconds())
+	_, err = db.Exec(`UPDATE ping SET duration = ? WHERE id = ?`, duration.Milliseconds(), id)
 	if err != nil {
 		log.Fatal(err)
 	}
