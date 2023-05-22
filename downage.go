@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"net"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -55,14 +55,14 @@ func randomizeList(list []string) []string {
 
 func serverAvailable(server string) bool {
 	fmt.Println("Pinging ", server)
-	conn, err := net.DialTimeout("icmp", server, time.Second)
+	Command := fmt.Sprint("ping -c 1 ", server, "> /dev/null && echo true || echo false")
+	output, err := exec.Command("/bin/sh", "-c", Command).Output()
+	result := strings.TrimSpace(string(output))
 	if err != nil {
-		fmt.Println("Server ", server, " is not available, error: ", err)
-		return false
+		fmt.Println("Error pinging server: ", err)
+		//log.Fatal(err)
 	}
-	conn.Close()
-	fmt.Println("Server ", server, " is available")
-	return true
+	return result == "true"
 }
 
 func someServerAvailable(servers []string) bool {
