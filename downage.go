@@ -38,7 +38,7 @@ func randomizeList(list []string) []string {
 }
 
 func serverAvailable(server string) bool {
-	log.Println("Pinging ", server)
+	log.Print("Pinging ", server, "...")
 	Command := fmt.Sprint("ping -c 1 ", server, "> /dev/null && echo true || echo false")
 	output, err := exec.Command("/bin/sh", "-c", Command).Output()
 	result := strings.TrimSpace(string(output))
@@ -101,11 +101,11 @@ func main() {
 			pingResult.Dump()
 
 		} else if internetIsUp && !continuing {
-			log.Println("Case 2: The internet is still up.")
+			log.Println("The internet is still up.")
 			// Case 2: The internet is up and we're not continuing
 			// Do nothing
 		} else if !internetIsUp && continuing {
-			log.Println("Case 3: The internet is still down.")
+			log.Println("The internet is still down.")
 			// Case 3: The internet is down and we're continuing
 			pingResult := PingResult{
 				StartTime:  startTime.UTC(),
@@ -115,7 +115,7 @@ func main() {
 			pingResult.Dump()
 		} else {
 			// Case 4: The internet is down and we're not continuing
-			log.Println("Case 4: The internet has gone down.")
+			log.Println("The internet has gone down.")
 			startTime = time.Now()
 			continuing = true
 			pingResult := PingResult{
