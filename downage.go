@@ -20,7 +20,7 @@ const (
 
 type PingResult struct {
 	StartTime  time.Time `json:"start_time"`
-	Duration   int64     `json:"duration"`
+	Duration   int64     `json:"duration_in_ms"`
 	Continuing bool      `json:"continuing"`
 }
 
